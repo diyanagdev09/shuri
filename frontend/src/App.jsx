@@ -1,23 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  FaceLandmarker,
-  GestureRecognizer,
-  FilesetResolver
-} from '@mediapipe/tasks-vision'
+import { FaceLandmarker, GestureRecognizer, FilesetResolver } from '@mediapipe/tasks-vision'
 import './App.css'
-
 import shuriIcon from './assets/shuri_icon_only.png'
+import shuriLogo from './assets/shuri_logo.png'
 import shuriAvatar from './assets/avatar.png'
 
 const API_URL = 'http://127.0.0.1:8000'
-
-const FACE_MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
-
+const FACE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
 const GESTURE_MODEL_URL = '/models/gesture_recognizer.task'
-
-const WASM_URL =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
+const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
 
 function App() {
   const [started, setStarted] = useState(false)
@@ -31,6 +22,8 @@ function App() {
   const [aiResponse, setAiResponse] = useState('')
   const [expressionCue, setExpressionCue] = useState('NEUTRAL')
   const [gestureCue, setGestureCue] = useState('NO GESTURE')
+  const [faceVisible, setFaceVisible] = useState(true)
+  const [faceReady, setFaceReady] = useState(false)
   const [error, setError] = useState('')
 
   const videoRef = useRef(null)
@@ -43,20 +36,17 @@ function App() {
   const visionAnimationRef = useRef(null)
   const faceLandmarkerRef = useRef(null)
   const gestureRecognizerRef = useRef(null)
-
-  const aiSpeakingRef = useRef(false)
   const processingRef = useRef(false)
+  const aiSpeakingRef = useRef(false)
 
-  const expressionCueRef = useRef('NEUTRAL')
-  const gestureCueRef = useRef('NO GESTURE')
-
-  const lastExpressionRef = useRef('NEUTRAL')
   const expressionCandidateRef = useRef('NEUTRAL')
   const expressionCandidateSinceRef = useRef(0)
-
-  const lastGestureRef = useRef('NO GESTURE')
+  const lastExpressionRef = useRef('NEUTRAL')
   const gestureCandidateRef = useRef('NO GESTURE')
   const gestureCandidateSinceRef = useRef(0)
+  const lastGestureRef = useRef('NO GESTURE')
+  const expressionCueRef = useRef('NEUTRAL')
+  const gestureCueRef = useRef('NO GESTURE')
 
   useEffect(() => {
     expressionCueRef.current = expressionCue
@@ -66,79 +56,45 @@ function App() {
     gestureCueRef.current = gestureCue
   }, [gestureCue])
 
-const startMedia = async () => {
-  setError('')
-
-  try {
-    const stream =
-      await navigator.mediaDevices.getUserMedia({
+  const startMedia = async () => {
+    setError('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true
       })
-
-    streamRef.current = stream
-    setMediaReady(true)
-  } catch (err) {
-    console.error(err)
-    setError(
-      'Camera or microphone access was denied.'
-    )
-    setStarted(false)
+      streamRef.current = stream
+      setMediaReady(true)
+    } catch (err) {
+      console.error(err)
+      setError('Camera or microphone access was denied.')
+      setStarted(false)
+    }
   }
-}
 
   useEffect(() => {
-    if (
-      !mediaReady ||
-      !videoRef.current ||
-      !streamRef.current
-    ) {
-      return
-    }
+    if (!mediaReady || !videoRef.current || !streamRef.current) return
 
-    videoRef.current.srcObject =
-      streamRef.current
+    videoRef.current.srcObject = streamRef.current
+    videoRef.current.play().catch(console.error)
 
-    videoRef.current
-      .play()
-      .catch(console.error)
-
-    const audioTrack =
-      streamRef.current.getAudioTracks()[0]
-
+    const audioTrack = streamRef.current.getAudioTracks()[0]
     if (!audioTrack) return
 
-    const audioContext =
-      new AudioContext()
-
-    const source =
-      audioContext.createMediaStreamSource(
-        streamRef.current
-      )
-
-    const analyser =
-      audioContext.createAnalyser()
+    const context = new AudioContext()
+    const source = context.createMediaStreamSource(streamRef.current)
+    const analyser = context.createAnalyser()
 
     analyser.fftSize = 256
     source.connect(analyser)
+    audioContextRef.current = context
+    context.resume().catch(() => {})
 
-    audioContextRef.current =
-      audioContext
-
-    const data =
-      new Uint8Array(
-        analyser.frequencyBinCount
-      )
+    const data = new Uint8Array(analyser.frequencyBinCount)
 
     const detectSpeech = () => {
       analyser.getByteFrequencyData(data)
-
-      const average =
-        data.reduce(
-          (sum, value) =>
-            sum + value,
-          0
-        ) / data.length
+      const average = data.reduce((sum, value) => sum + value, 0) / data.length
 
       setUserSpeaking(
         !aiSpeakingRef.current &&
@@ -146,22 +102,16 @@ const startMedia = async () => {
         average > 18
       )
 
-      audioAnimationRef.current =
-        requestAnimationFrame(
-          detectSpeech
-        )
+      audioAnimationRef.current = requestAnimationFrame(detectSpeech)
     }
 
     detectSpeech()
 
     return () => {
       if (audioAnimationRef.current) {
-        cancelAnimationFrame(
-          audioAnimationRef.current
-        )
+        cancelAnimationFrame(audioAnimationRef.current)
       }
-
-      audioContext.close()
+      context.close()
     }
   }, [mediaReady])
 
@@ -172,111 +122,99 @@ const startMedia = async () => {
 
     const setupVision = async () => {
       try {
-        const vision =
-          await FilesetResolver.forVisionTasks(
-            WASM_URL
-          )
+        const vision = await FilesetResolver.forVisionTasks(WASM_URL)
 
-        const faceLandmarker =
-          await FaceLandmarker.createFromOptions(
-            vision,
-            {
-              baseOptions: {
-                modelAssetPath:
-                  FACE_MODEL_URL
-              },
-              runningMode: 'VIDEO',
-              numFaces: 1,
-              outputFaceBlendshapes: true,
-              minFaceDetectionConfidence: 0.5,
-              minFacePresenceConfidence: 0.5,
-              minTrackingConfidence: 0.5
-            }
-          )
+        try {
+          const face = await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: FACE_MODEL_URL
+            },
+            runningMode: 'VIDEO',
+            numFaces: 1,
+            outputFaceBlendshapes: true,
+            minFaceDetectionConfidence: 0.5,
+            minFacePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5
+          })
 
-        const gestureRecognizer =
-          await GestureRecognizer.createFromOptions(
-            vision,
-            {
-              baseOptions: {
-                modelAssetPath:
-                  GESTURE_MODEL_URL
-              },
-              runningMode: 'VIDEO',
-              numHands: 2,
-              minHandDetectionConfidence: 0.5,
-              minHandPresenceConfidence: 0.5,
-              minTrackingConfidence: 0.5
-            }
-          )
-
-        if (cancelled) {
-          faceLandmarker.close()
-          gestureRecognizer.close()
-          return
+          if (cancelled) {
+            face.close()
+          } else {
+            faceLandmarkerRef.current = face
+            setFaceReady(true)
+          }
+        } catch (err) {
+          console.error('Face detection setup failed:', err)
+          if (!cancelled) {
+            setFaceReady(false)
+            setFaceVisible(false)
+          }
         }
 
-        faceLandmarkerRef.current =
-          faceLandmarker
+        try {
+          const gesture = await GestureRecognizer.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: GESTURE_MODEL_URL
+            },
+            runningMode: 'VIDEO',
+            numHands: 2,
+            minHandDetectionConfidence: 0.5,
+            minHandPresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5
+          })
 
-        gestureRecognizerRef.current =
-          gestureRecognizer
+          if (cancelled) {
+            gesture.close()
+          } else {
+            gestureRecognizerRef.current = gesture
+          }
+        } catch (err) {
+          console.error('Gesture recognition setup failed:', err)
+        }
 
         const detectVision = () => {
-          if (
-            !videoRef.current ||
-            videoRef.current.readyState < 2 ||
-            !faceLandmarkerRef.current ||
-            !gestureRecognizerRef.current
-          ) {
-            visionAnimationRef.current =
-              requestAnimationFrame(
-                detectVision
-              )
+          if (!videoRef.current || videoRef.current.readyState < 2) {
+            visionAnimationRef.current = requestAnimationFrame(detectVision)
             return
           }
 
-          const timestamp =
-            performance.now()
+          const timestamp = performance.now()
 
-          try {
-            const faceResult =
-              faceLandmarkerRef.current
-                .detectForVideo(
-                  videoRef.current,
-                  timestamp
-                )
-
-            const gestureResult =
-              gestureRecognizerRef.current
-                .recognizeForVideo(
-                  videoRef.current,
-                  timestamp
-                )
-
-            updateExpression(
-              faceResult
-            )
-
-            updateGesture(
-              gestureResult
-            )
-          } catch (err) {
-            console.error(err)
+          if (faceLandmarkerRef.current) {
+            try {
+              const result = faceLandmarkerRef.current.detectForVideo(
+                videoRef.current,
+                timestamp
+              )
+              updateExpression(result)
+            } catch (err) {
+              console.error('Face detection error:', err)
+            }
           }
 
-          visionAnimationRef.current =
-            requestAnimationFrame(
-              detectVision
-            )
+          if (gestureRecognizerRef.current) {
+            try {
+              const result = gestureRecognizerRef.current.recognizeForVideo(
+                videoRef.current,
+                timestamp
+              )
+              updateGesture(result)
+            } catch (err) {
+              console.error('Gesture recognition error:', err)
+            }
+          }
+
+          visionAnimationRef.current = requestAnimationFrame(detectVision)
         }
 
         detectVision()
       } catch (err) {
         console.error(err)
-        setError(
-          'Vision analysis could not be started.'
-        )
+        if (!cancelled) {
+          setFaceReady(false)
+          setFaceVisible(false)
+          setError('Vision analysis could not be started.')
+        }
       }
     }
 
@@ -286,512 +224,123 @@ const startMedia = async () => {
       cancelled = true
 
       if (visionAnimationRef.current) {
-        cancelAnimationFrame(
-          visionAnimationRef.current
-        )
+        cancelAnimationFrame(visionAnimationRef.current)
       }
 
-      if (faceLandmarkerRef.current) {
-        faceLandmarkerRef.current.close()
-        faceLandmarkerRef.current = null
-      }
+      faceLandmarkerRef.current?.close()
+      gestureRecognizerRef.current?.close()
 
-      if (gestureRecognizerRef.current) {
-        gestureRecognizerRef.current.close()
-        gestureRecognizerRef.current = null
-      }
+      faceLandmarkerRef.current = null
+      gestureRecognizerRef.current = null
     }
   }, [mediaReady])
 
-  const updateExpression = result => {
-    const categories =
-      result?.faceBlendshapes?.[0]
-        ?.categories || []
+const updateExpression = (result) => {
+  const categories = result?.faceBlendshapes?.[0]?.categories || []
 
-    if (!categories.length) {
-      setExpressionCue(
-        'NO FACE DETECTED'
-      )
-      return
-    }
+if (categories.length === 0) {
+  setFaceVisible(false)
+  setExpressionCue('NO FACE DETECTED')
+  return
+}
 
-    const scores = {}
+setFaceVisible(true)
+setExpressionCue('NEUTRAL')
 
-    categories.forEach(category => {
-      scores[
-        category.categoryName
-      ] = category.score
-    })
+  const scores = Object.fromEntries(
+    categories.map(c => [c.categoryName, c.score])
+  )
 
-    const get = name =>
-      scores[name] || 0
+  let cue = 'NEUTRAL'
 
-    const avg = (...names) =>
-      names.reduce(
-        (sum, name) =>
-          sum + get(name),
-        0
-      ) / names.length
-
-    const smile = avg(
-      'mouthSmileLeft',
-      'mouthSmileRight'
-    )
-
-    const frown = avg(
-      'mouthFrownLeft',
-      'mouthFrownRight'
-    )
-
-    const browDown = avg(
-      'browDownLeft',
-      'browDownRight'
-    )
-
-    const browInnerUp =
-      get('browInnerUp')
-
-    const browOuterUp = avg(
-      'browOuterUpLeft',
-      'browOuterUpRight'
-    )
-
-    const eyeWide = avg(
-      'eyeWideLeft',
-      'eyeWideRight'
-    )
-
-    const eyeSquint = avg(
-      'eyeSquintLeft',
-      'eyeSquintRight'
-    )
-
-    const eyeBlink = avg(
-      'eyeBlinkLeft',
-      'eyeBlinkRight'
-    )
-
-    const cheekSquint = avg(
-      'cheekSquintLeft',
-      'cheekSquintRight'
-    )
-
-    const cheekPuff =
-      get('cheekPuff')
-
-    const jawOpen =
-      get('jawOpen')
-
-    const jawForward =
-      get('jawForward')
-
-    const jawLeft =
-      get('jawLeft')
-
-    const jawRight =
-      get('jawRight')
-
-    const mouthClose =
-      get('mouthClose')
-
-    const mouthDimple = avg(
-      'mouthDimpleLeft',
-      'mouthDimpleRight'
-    )
-
-    const mouthFunnel =
-      get('mouthFunnel')
-
-    const mouthPucker =
-      get('mouthPucker')
-
-    const mouthPress = avg(
-      'mouthPressLeft',
-      'mouthPressRight'
-    )
-
-    const mouthStretch = avg(
-      'mouthStretchLeft',
-      'mouthStretchRight'
-    )
-
-    const mouthRollUpper =
-      get('mouthRollUpper')
-
-    const mouthRollLower =
-      get('mouthRollLower')
-
-    const mouthShrugUpper =
-      get('mouthShrugUpper')
-
-    const mouthShrugLower =
-      get('mouthShrugLower')
-
-    const noseSneer = avg(
-      'noseSneerLeft',
-      'noseSneerRight'
-    )
-
-    const upperLipRaise = avg(
-      'mouthUpperUpLeft',
-      'mouthUpperUpRight'
-    )
-
-    const lowerLipDown = avg(
-      'mouthLowerDownLeft',
-      'mouthLowerDownRight'
-    )
-
-    const leftEyeLookUp =
-      get('eyeLookUpLeft')
-
-    const rightEyeLookUp =
-      get('eyeLookUpRight')
-
-    const leftEyeLookDown =
-      get('eyeLookDownLeft')
-
-    const rightEyeLookDown =
-      get('eyeLookDownRight')
-
-    const leftEyeLookOut =
-      get('eyeLookOutLeft')
-
-    const rightEyeLookOut =
-      get('eyeLookOutRight')
-
-    const leftEyeLookIn =
-      get('eyeLookInLeft')
-
-    const rightEyeLookIn =
-      get('eyeLookInRight')
-
-    let next = 'NEUTRAL'
-
-    if (
-      smile > 0.55 &&
-      cheekSquint > 0.35
-    )
-      next = 'BIG SMILE'
-    else if (smile > 0.4)
-      next = 'SMILE'
-    else if (
-      frown > 0.42 &&
-      browInnerUp > 0.3
-    )
-      next = 'SAD-LIKE CUE'
-    else if (
-      frown > 0.32 &&
-      browDown > 0.3
-    )
-      next = 'FROWN'
-    else if (
-      browDown > 0.5 &&
-      mouthPress > 0.3
-    )
-      next = 'FRUSTRATED CUE'
-    else if (browDown > 0.48)
-      next = 'FURROWED BROWS'
-    else if (
-      eyeWide > 0.55 &&
-      jawOpen > 0.35
-    )
-      next = 'SHOCKED CUE'
-    else if (
-      eyeWide > 0.45 &&
-      browInnerUp > 0.4
-    )
-      next = 'SURPRISED CUE'
-    else if (
-      browOuterUp > 0.48 &&
-      browInnerUp > 0.3
-    )
-      next = 'ATTENTIVE'
-    else if (
-      browInnerUp > 0.5 &&
-      mouthPress > 0.25
-    )
-      next = 'THOUGHTFUL CUE'
-    else if (
-      browInnerUp > 0.42 &&
-      mouthStretch > 0.25
-    )
-      next = 'UNCERTAIN CUE'
-    else if (
-      eyeSquint > 0.5 &&
-      smile > 0.2
-    )
-      next = 'AMUSED CUE'
-    else if (eyeSquint > 0.48)
-      next = 'SQUINTING'
-    else if (eyeWide > 0.5)
-      next = 'WIDE-EYED'
-    else if (eyeBlink > 0.55)
-      next = 'BLINKING'
-    else if (cheekPuff > 0.5)
-      next = 'CHEEKS PUFFED'
-    else if (mouthPucker > 0.5)
-      next = 'PULLED LIPS'
-    else if (mouthFunnel > 0.5)
-      next = 'FUNNELLED LIPS'
-    else if (mouthPress > 0.5)
-      next = 'LIPS PRESSED'
-    else if (mouthStretch > 0.5)
-      next = 'MOUTH STRETCHED'
-    else if (
-      upperLipRaise > 0.45 &&
-      noseSneer > 0.25
-    )
-      next = 'NOSE WRINKLE'
-    else if (upperLipRaise > 0.42)
-      next = 'UPPER LIP RAISED'
-    else if (lowerLipDown > 0.45)
-      next = 'LOWER LIP DROP'
-    else if (mouthDimple > 0.45)
-      next = 'DIMPLE CUE'
-    else if (
-      mouthShrugUpper > 0.45 ||
-      mouthShrugLower > 0.45
-    )
-      next = 'MOUTH SHRUG'
-    else if (
-      mouthRollUpper > 0.45 ||
-      mouthRollLower > 0.45
-    )
-      next = 'LIP ROLL'
-    else if (jawOpen > 0.55)
-      next = 'OPEN MOUTH'
-    else if (jawForward > 0.5)
-      next = 'JAW FORWARD'
-    else if (
-      Math.max(
-        jawLeft,
-        jawRight
-      ) > 0.45
-    )
-      next = 'JAW SHIFT'
-    else if (
-      leftEyeLookUp > 0.55 &&
-      rightEyeLookUp > 0.55
-    )
-      next = 'LOOKING UP'
-    else if (
-      leftEyeLookDown > 0.55 &&
-      rightEyeLookDown > 0.55
-    )
-      next = 'LOOKING DOWN'
-    else if (
-      (
-        leftEyeLookOut > 0.5 &&
-        rightEyeLookIn > 0.5
-      ) ||
-      (
-        rightEyeLookOut > 0.5 &&
-        leftEyeLookIn > 0.5
-      )
-    )
-      next = 'LOOKING SIDEWAYS'
-    else if (
-      mouthClose > 0.55 &&
-      mouthPress < 0.2
-    )
-      next = 'CLOSED LIPS'
-
-    const now = Date.now()
-
-    if (
-      next !==
-      expressionCandidateRef.current
-    ) {
-      expressionCandidateRef.current =
-        next
-
-      expressionCandidateSinceRef.current =
-        now
-    }
-
-    if (
-      now -
-        expressionCandidateSinceRef.current >
-        700 &&
-      next !== lastExpressionRef.current
-    ) {
-      lastExpressionRef.current =
-        next
-
-      setExpressionCue(next)
-    }
+  if (scores.mouthSmileLeft > 0.55 && scores.mouthSmileRight > 0.55) {
+    cue = 'BIG SMILE'
+  } else if (scores.mouthSmileLeft > 0.35 && scores.mouthSmileRight > 0.35) {
+    cue = 'SMILE'
+  } else if (scores.browDownLeft > 0.45 && scores.browDownRight > 0.45) {
+    cue = 'FURROWED BROWS'
+  } else if (scores.eyeWideLeft > 0.45 && scores.eyeWideRight > 0.45) {
+    cue = 'WIDE-EYED'
+  } else if (scores.jawOpen > 0.45) {
+    cue = 'OPEN MOUTH'
   }
 
+  setExpressionCue(cue)
+}
   const updateGesture = result => {
-    const gestures =
-      result?.gestures || []
-
-    const landmarks =
-      result?.landmarks || []
+    const gestures = result?.gestures || []
+    const landmarks = result?.landmarks || []
 
     let best = 'NO GESTURE'
     let bestScore = 0
 
-    for (
-      let i = 0;
-      i < gestures.length;
-      i++
-    ) {
-      for (
-        const gesture of
-        gestures[i] || []
-      ) {
-        const score =
-          gesture.score || 0
-
-        const name =
-          gesture.categoryName || ''
+    const names = {
+      Thumb_Up: 'THUMBS UP',
+      Thumb_Down: 'THUMBS DOWN',
+      Victory: 'PEACE',
+      Open_Palm: 'OPEN PALM',
+      Closed_Fist: 'CLOSED FIST',
+      Pointing_Up: 'POINTING UP',
+      ILoveYou: 'ROCK ON'
+    }
+    
+    for (const hand of gestures) {
+      for (const gesture of hand || []) {
+        const score = gesture.score || 0
 
         if (
-          score < 0.5 ||
+          gesture.categoryName === 'None' ||
+          score < 0.6 ||
           score <= bestScore
         ) {
           continue
         }
 
-        let detected =
-          'NO GESTURE'
-
-        if (name === 'Thumb_Up')
-          detected =
-            'THUMBS UP'
-        else if (
-          name === 'Thumb_Down'
-        )
-          detected =
-            'THUMBS DOWN'
-        else if (
-          name === 'Victory'
-        )
-          detected =
-            'PEACE / VICTORY'
-        else if (
-          name === 'Open_Palm'
-        )
-          detected =
-            'OPEN PALM'
-        else if (
-          name === 'Closed_Fist'
-        )
-          detected =
-            'CLOSED FIST'
-        else if (
-          name === 'Pointing_Up'
-        )
-          detected =
-            'POINTING UP'
-        else if (
-          name === 'ILoveYou'
-        )
-          detected =
-            'I LOVE YOU'
-
-        if (
-          detected !==
-          'NO GESTURE'
-        ) {
-          best = detected
-          bestScore = score
-        }
+        bestScore = score
+        best = names[gesture.categoryName] || best
       }
     }
 
     for (const hand of landmarks) {
       if (isOkayGesture(hand)) {
-        best = 'OK / FINE'
+        best = 'FINE'
         break
       }
     }
 
-    updateGestureState(best)
+    const now = Date.now()
+
+    if (best !== gestureCandidateRef.current) {
+      gestureCandidateRef.current = best
+      gestureCandidateSinceRef.current = now
+    }
+
+    if (
+      now - gestureCandidateSinceRef.current > 500 &&
+      best !== lastGestureRef.current
+    ) {
+      lastGestureRef.current = best
+      setGestureCue(best)
+    }
   }
 
   const isOkayGesture = hand => {
-    if (
-      !hand ||
-      hand.length < 21
-    ) {
-      return false
-    }
+    if (!hand || hand.length < 21) return false
 
     const distance = (a, b) =>
-      Math.hypot(
-        a.x - b.x,
-        a.y - b.y
-      )
+      Math.hypot(a.x - b.x, a.y - b.y)
 
     const wrist = hand[0]
-    const thumbTip = hand[4]
     const indexTip = hand[8]
-    const middleTip = hand[12]
-    const ringTip = hand[16]
-    const pinkyTip = hand[20]
 
-    const wi = distance(
-      wrist,
-      indexTip
-    )
+    const wristIndex = distance(wrist, indexTip)
 
     return (
-      distance(
-        thumbTip,
-        indexTip
-      ) <
-        wi * 0.35 &&
-      distance(
-        wrist,
-        middleTip
-      ) >
-        wi * 1.05 &&
-      distance(
-        wrist,
-        ringTip
-      ) >
-        wi * 0.9 &&
-      distance(
-        wrist,
-        pinkyTip
-      ) >
-        wi * 0.75
+      distance(hand[4], hand[8]) < wristIndex * 0.35 &&
+      distance(wrist, hand[12]) > wristIndex * 1.05 &&
+      distance(wrist, hand[16]) > wristIndex * 0.9 &&
+      distance(wrist, hand[20]) > wristIndex * 0.75
     )
-  }
-
-  const updateGestureState = next => {
-    const now = Date.now()
-
-    if (
-      next !==
-      gestureCandidateRef.current
-    ) {
-      gestureCandidateRef.current =
-        next
-
-      gestureCandidateSinceRef.current =
-        now
-    }
-
-    if (
-      now -
-        gestureCandidateSinceRef.current <
-      600
-    ) {
-      return
-    }
-
-    if (
-      next !== lastGestureRef.current
-    ) {
-      lastGestureRef.current =
-        next
-
-      setGestureCue(next)
-    }
   }
 
   const startRecording = () => {
@@ -799,9 +348,7 @@ const startMedia = async () => {
       !streamRef.current ||
       processingRef.current ||
       aiSpeakingRef.current
-    ) {
-      return
-    }
+    ) return
 
     if (audioRef.current) {
       audioRef.current.pause()
@@ -817,70 +364,46 @@ const startMedia = async () => {
 
     audioChunksRef.current = []
 
-    const audioTrack =
-      streamRef.current
-        .getAudioTracks()[0]
+    const audioTrack = streamRef.current.getAudioTracks()[0]
 
     if (!audioTrack) {
-      setError(
-        'Microphone audio is not available.'
-      )
+      setError('Microphone audio is not available.')
       return
     }
 
-    const audioStream =
-      new MediaStream([
-        audioTrack
-      ])
+    const audioStream = new MediaStream([audioTrack])
 
-    const mimeType =
-      MediaRecorder.isTypeSupported(
-        'audio/webm;codecs=opus'
-      )
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm'
+    const mimeType = MediaRecorder.isTypeSupported(
+      'audio/webm;codecs=opus'
+    )
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm'
 
     try {
-      const recorder =
-        new MediaRecorder(
-          audioStream,
-          { mimeType }
-        )
+      const recorder = new MediaRecorder(audioStream, { mimeType })
 
-      mediaRecorderRef.current =
-        recorder
+      mediaRecorderRef.current = recorder
 
-      recorder.ondataavailable =
-        event => {
-          if (
-            event.data.size > 0
-          ) {
-            audioChunksRef.current.push(
-              event.data
-            )
-          }
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
         }
+      }
 
-      recorder.onstop =
-        sendRecording
-
+      recorder.onstop = sendRecording
       recorder.start()
 
       setIsRecording(true)
     } catch (err) {
       console.error(err)
-
-      setError(
-        'Could not start audio recording.'
-      )
+      setError('Could not start audio recording.')
     }
   }
 
   const stopRecording = () => {
     if (
       mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !==
-        'inactive'
+      mediaRecorderRef.current.state !== 'inactive'
     ) {
       mediaRecorderRef.current.stop()
     }
@@ -889,47 +412,29 @@ const startMedia = async () => {
   }
 
   const sendRecording = async () => {
-    if (
-      !audioChunksRef.current.length
-    ) {
-      return
-    }
+    if (!audioChunksRef.current.length) return
 
     processingRef.current = true
-
     setIsTranscribing(true)
     setError('')
 
-    const audioBlob =
-      new Blob(
-        audioChunksRef.current,
+    const audioBlob = new Blob(audioChunksRef.current, {
+      type: 'audio/webm'
+    })
+
+    const formData = new FormData()
+    formData.append('file', audioBlob, 'recording.webm')
+
+    try {
+      const transcriptionResponse = await fetch(
+        `${API_URL}/transcribe`,
         {
-          type: 'audio/webm'
+          method: 'POST',
+          body: formData
         }
       )
 
-    const formData =
-      new FormData()
-
-    formData.append(
-      'file',
-      audioBlob,
-      'recording.webm'
-    )
-
-    try {
-      const transcriptionResponse =
-        await fetch(
-          `${API_URL}/transcribe`,
-          {
-            method: 'POST',
-            body: formData
-          }
-        )
-
-      if (
-        !transcriptionResponse.ok
-      ) {
+      if (!transcriptionResponse.ok) {
         throw new Error(
           `Transcription failed: ${transcriptionResponse.status}`
         )
@@ -938,66 +443,52 @@ const startMedia = async () => {
       const transcriptionData =
         await transcriptionResponse.json()
 
-      const text =
-        (
-          transcriptionData.text ||
-          ''
-        ).trim()
+      const text = (
+        transcriptionData.text || ''
+      ).trim()
 
       setTranscript(text)
 
       if (!text) {
-        setError(
-          'I could not understand the recording.'
-        )
+        setError('I could not understand the recording.')
         return
       }
 
       setIsTranscribing(false)
       setIsThinking(true)
 
-      const contextMessage = `
-User message:
-${text}
+      let contextMessage = text
 
-Current facial-expression cue:
-${expressionCueRef.current}
+      if (
+        expressionCueRef.current !== 'NEUTRAL' ||
+        gestureCueRef.current !== 'NO GESTURE'
+      ) {
+        contextMessage = `
+      ${text}
 
-Current hand gesture:
-${gestureCueRef.current}
+      Visual context:
+      Facial cue: ${expressionCueRef.current}
+      Hand gesture: ${gestureCueRef.current}
 
-Use visual information only as soft conversational context.
-Do not claim to know the user's true internal emotional state.
-Do not diagnose emotions.
-Do not mention the computer vision system.
-Only mention visual cues when naturally relevant.
+      Treat visual information only as soft conversational context.
+      Do not claim to know the user's true emotional state.
+      Do not diagnose emotions.
+      Do not mention the vision system unless directly relevant.
+      `
+      }
 
-Gesture meanings:
-THUMBS UP = good / yes / approval
-THUMBS DOWN = no / disapproval
-PEACE / VICTORY = peace / victory
-OK / FINE = okay / fine / good
-OPEN PALM = hello / stop / wait
-CLOSED FIST = closed fist
-POINTING UP = pointing / one
-I LOVE YOU = hand gesture associated with "I love you"
-`
-
-      const chatResponse =
-        await fetch(
-          `${API_URL}/chat`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type':
-                'application/json'
-            },
-            body: JSON.stringify({
-              message:
-                contextMessage
-            })
-          }
-        )
+      const chatResponse = await fetch(
+        `${API_URL}/chat`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: contextMessage
+          })
+        }
+      )
 
       if (!chatResponse.ok) {
         throw new Error(
@@ -1005,36 +496,33 @@ I LOVE YOU = hand gesture associated with "I love you"
         )
       }
 
-      const chatData =
-        await chatResponse.json()
+      const chatData = await chatResponse.json()
 
-      const responseText =
-        (
-          chatData.response ||
-          ''
-        ).trim()
+      const responseText = (
+        chatData.response || ''
+      ).trim()
 
       if (!responseText) {
         throw new Error(
-          'The AI returned an empty response.'
+          'SHURI returned an empty response.'
         )
       }
+
+      setAiResponse(responseText)
+      setIsThinking(false)
 
       await speakResponse(
         responseText
       )
-    } catch (err) {
-      console.error(err)
+    }
 
+     catch (err) {
+      console.error(err)
       setIsThinking(false)
       setIsTranscribing(false)
       setAiSpeaking(false)
-
       aiSpeakingRef.current = false
-
-      setError(
-        'The system could not process that message.'
-      )
+      setError('SHURI could not process that message.')
     } finally {
       processingRef.current = false
       setIsTranscribing(false)
@@ -1051,98 +539,61 @@ I LOVE YOU = hand gesture associated with "I love you"
         audioRef.current = null
       }
 
-      const response =
-        await fetch(
-          `${API_URL}/speak`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type':
-                'application/json'
-            },
-            body: JSON.stringify({
-              text
-            })
-          }
-        )
+      const response = await fetch(
+        `${API_URL}/speak`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ text })
+        }
+      )
 
       if (!response.ok) {
-        const message =
-          await response.text()
-
+        const message = await response.text()
         throw new Error(
           `TTS failed: ${response.status} ${message}`
         )
       }
 
-      const audioBlob =
-        await response.blob()
+      const audioBlob = await response.blob()
 
-      const audioUrl =
-        URL.createObjectURL(
-          audioBlob
-        )
+      if (!audioBlob.size) {
+        throw new Error('Empty audio response.')
+      }
 
-      const audio =
-        new Audio(audioUrl)
+      const audioUrl = URL.createObjectURL(audioBlob)
+      const audio = new Audio(audioUrl)
 
+      audio.preload = 'auto'
       audioRef.current = audio
 
       audio.onplay = () => {
-        setIsThinking(false)
-        setAiResponse(text)
         setAiSpeaking(true)
-
-        aiSpeakingRef.current =
-          true
-
-        setUserSpeaking(false)
       }
 
       audio.onended = () => {
-        URL.revokeObjectURL(
-          audioUrl
-        )
-
+        URL.revokeObjectURL(audioUrl)
         audioRef.current = null
-
-        aiSpeakingRef.current =
-          false
-
+        aiSpeakingRef.current = false
         setAiSpeaking(false)
       }
 
       audio.onerror = event => {
-        console.error(
-          'Audio error:',
-          event
-        )
-
-        URL.revokeObjectURL(
-          audioUrl
-        )
-
+        console.error('SHURI audio error:', event)
+        URL.revokeObjectURL(audioUrl)
         audioRef.current = null
-
-        aiSpeakingRef.current =
-          false
-
+        aiSpeakingRef.current = false
         setAiSpeaking(false)
-
-        setError(
-          'The voice response could not be played.'
-        )
+        setError('SHURI could not play the voice response.')
       }
 
       await audio.play()
     } catch (err) {
       console.error(err)
-
-      aiSpeakingRef.current =
-        false
-
+      aiSpeakingRef.current = false
       setAiSpeaking(false)
-
       throw err
     }
   }
@@ -1159,32 +610,24 @@ I LOVE YOU = hand gesture associated with "I love you"
 
     if (
       mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !==
-        'inactive'
+      mediaRecorderRef.current.state !== 'inactive'
     ) {
       mediaRecorderRef.current.stop()
     }
 
-    streamRef.current
-      ?.getTracks()
-      .forEach(track =>
-        track.stop()
-      )
+    streamRef.current?.getTracks().forEach(
+      track => track.stop()
+    )
 
     if (audioAnimationRef.current) {
-      cancelAnimationFrame(
-        audioAnimationRef.current
-      )
+      cancelAnimationFrame(audioAnimationRef.current)
     }
 
     if (visionAnimationRef.current) {
-      cancelAnimationFrame(
-        visionAnimationRef.current
-      )
+      cancelAnimationFrame(visionAnimationRef.current)
     }
 
     audioContextRef.current?.close()
-
     faceLandmarkerRef.current?.close()
     gestureRecognizerRef.current?.close()
 
@@ -1202,295 +645,260 @@ I LOVE YOU = hand gesture associated with "I love you"
     setIsThinking(false)
     setTranscript('')
     setAiResponse('')
-    setStarted(false)
     setExpressionCue('NEUTRAL')
     setGestureCue('NO GESTURE')
+    setFaceVisible(true)
+    setFaceReady(false)
+    setError('')
+    setStarted(false)
   }
 
-  if (started) {
+  if (started && mediaReady) {
     return (
       <div className="shuri-app">
         <header className="topbar">
           <div className="brand">
-            <img
-              src={shuriIcon}
-              alt=""
-            />
-
+            <img src={shuriIcon} alt="" />
             <span>S.H.U.R.I.</span>
           </div>
 
-          {mediaReady && (
-            <div className="system-status">
-              <span className="status-dot"></span>
-              SESSION ACTIVE
-            </div>
-          )}
         </header>
 
         <main className="session">
+          <div className="conversation">
+            <div className="conversation-header">
 
-          {mediaReady && (
-            <div className="conversation">
-              <div className="conversation-header">
-                <div>
-                  <p className="eyebrow">
-                    LIVE SESSION
-                  </p>
+              <div className="live-state">
+                <span></span>
 
-                  <h2>
-                    {isTranscribing
-                      ? 'Understanding you, Diya.'
-                      : isThinking
-                        ? 'Preparing your response.'
-                        : aiSpeaking
-                          ? 'Speaking to you, Diya.'
-                          : "I'm listening, Diya."}
-                  </h2>
-                </div>
-
-                <div className="live-state">
-                  <span></span>
-
-                  {isTranscribing
-                    ? 'TRANSCRIBING'
-                    : isThinking
-                      ? 'PROCESSING'
-                      : userSpeaking
-                        ? 'LISTENING'
-                        : aiSpeaking
-                          ? 'SPEAKING'
-                          : 'READY'}
-                </div>
-              </div>
-
-              <div className="video-grid">
-                <div className="video-window user-window">
-                  <div className="window-header">
-                    <span>
-                      01 // DIya
-                    </span>
-
-                    <span
-                      className={
-                        userSpeaking
-                          ? 'active-state'
-                          : ''
-                      }
-                    >
-                      {userSpeaking
+                {isTranscribing
+                  ? 'TRANSCRIBING'
+                  : isThinking
+                    ? 'PROCESSING'
+                    : userSpeaking
+                      ? 'LISTENING'
+                      : aiSpeaking
                         ? 'SPEAKING'
-                        : 'LIVE'}
-                    </span>
-                  </div>
-
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="camera-feed"
-                  />
-
-                  {(
-                    gestureCue !==
-                      'NO GESTURE' ||
-                    (
-                      expressionCue !==
-                        'NEUTRAL' &&
-                      expressionCue !==
-                        'NO FACE DETECTED'
-                    )
-                  ) && (
-                    <div className="vision-cue">
-                      {gestureCue !==
-                      'NO GESTURE'
-                        ? gestureCue
-                        : expressionCue}
-                    </div>
-                  )}
-
-                  <div className="window-status">
-                    <span
-                      className={
-                        userSpeaking
-                          ? 'pulse-dot'
-                          : ''
-                      }
-                    ></span>
-
-                    {userSpeaking
-                      ? 'VOICE DETECTED'
-                      : isRecording
-                        ? 'RECORDING'
-                        : 'CAMERA ONLINE'}
-                  </div>
-                </div>
-
-                <div
-                  className={`video-window ai-window ${
-                    aiSpeaking
-                      ? 'ai-speaking'
-                      : ''
-                  }`}
-                >
-                  <div className="window-header">
-                    <span>
-                      02 // AI CORE
-                    </span>
-
-                    <span
-                      className={
-                        aiSpeaking
-                          ? 'active-state'
-                          : ''
-                      }
-                    >
-                      {aiSpeaking
-                        ? 'SPEAKING'
-                        : 'LOCAL CORE'}
-                    </span>
-                  </div>
-
-                  <div className="ai-stage">
-                    <div className="ai-core-ring ring-one"></div>
-                    <div className="ai-core-ring ring-two"></div>
-                    <div className="ai-core-ring ring-three"></div>
-
-                    <div className="ai-avatar">
-                      <img
-                        src={shuriAvatar}
-                        alt="AI assistant"
-                      />
-                    </div>
-
-                    <div className="ai-signal">
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </div>
-
-                    <div className="ai-label">
-                      <span className="ai-label-dot"></span>
-                      AI CORE
-                    </div>
-                  </div>
-
-                  <div className="window-status">
-                    <span
-                      className={
-                        aiSpeaking
-                          ? 'pulse-dot'
-                          : ''
-                      }
-                    ></span>
-
-                    {aiSpeaking
-                      ? 'VOICE OUTPUT ACTIVE'
-                      : isThinking
-                        ? 'GENERATING RESPONSE'
-                        : 'AI CORE READY'}
-                  </div>
-                </div>
+                        : 'READY'}
               </div>
+            </div>
 
-              {(transcript ||
-                aiResponse) && (
-                <div className="conversation-text">
-                  {transcript && (
-                    <div className="message user-message">
-                      <div className="message-label">
-                        YOU
-                      </div>
+            <div className="video-grid">
+              <div className="video-window user-window">
+                <div className="window-header">
+                  <span>DIYA</span>
 
-                      <div className="message-text">
-                        {transcript}
-                      </div>
-                    </div>
-                  )}
-
-                  {aiResponse && (
-                    <div className="message ai-message">
-                      <div className="message-label">
-                        AI
-                      </div>
-
-                      <div className="message-text">
-                        {aiResponse}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="conversation-controls">
-                <div className="mic-state">
                   <span
                     className={
-                      isRecording ||
+                      userSpeaking
+                        ? 'active-state'
+                        : ''
+                    }
+                  >
+      
+                  </span>
+                </div>
+
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="camera-feed"
+                />
+
+                {faceReady && !faceVisible ? (
+                  <div className="vision-cue face-warning">
+                    FACE NOT VISIBLE
+                  </div>
+                ) : (
+                  <>
+                    {gestureCue !== 'NO GESTURE' && (
+                      <div className="vision-cue">
+                        {gestureCue}
+                      </div>
+                    )}
+
+                    {expressionCue !== 'NEUTRAL' &&
+                      expressionCue !== 'NO FACE DETECTED' && (
+                        <div className="vision-cue">
+                          {expressionCue}
+                        </div>
+                      )}
+                  </>
+                )}
+
+                <div className="window-status">
+                  <span
+                    className={
                       userSpeaking
                         ? 'pulse-dot'
                         : ''
                     }
                   ></span>
 
-                  {isTranscribing
-                    ? 'TRANSCRIBING...'
-                    : isThinking
-                      ? 'PROCESSING...'
-                      : isRecording
-                        ? 'LISTENING...'
-                        : aiSpeaking
-                          ? 'AI IS SPEAKING'
-                          : 'MICROPHONE READY'}
-                </div>
-
-                <div className="conversation-buttons">
-                  {!isRecording &&
-                  !isTranscribing &&
-                  !isThinking &&
-                  !aiSpeaking ? (
-                    <button
-                      className="primary-button talk-button"
-                      onClick={
-                        startRecording
-                      }
-                    >
-                      START TALKING
-                    </button>
-                  ) : isRecording ? (
-                    <button
-                      className="primary-button talk-button recording-button"
-                      onClick={
-                        stopRecording
-                      }
-                    >
-                      STOP TALKING
-                    </button>
-                  ) : null}
-
-                  <button
-                    className="secondary-button"
-                    onClick={
-                      stopEverything
-                    }
-                  >
-                    STOP SESSION
-                  </button>
+                  {userSpeaking
+                    ? 'VOICE DETECTED'
+                    : isRecording
+                      ? 'SPEAKING'
+                      : 'CAMERA ONLINE'}
                 </div>
               </div>
 
-              {error && (
-                <p className="media-error">
-                  {error}
-                </p>
-              )}
+              <div
+                className={`video-window ai-window ${
+                  aiSpeaking
+                    ? 'ai-speaking'
+                    : ''
+                }`}
+              >
+                <div className="window-header">
+                  <span>SHURI</span>
+
+                  <span
+                    className={
+                      aiSpeaking
+                        ? 'active-state'
+                        : ''
+                    }
+                  >
+                  </span>
+                </div>
+
+                <div className="ai-stage">
+                  <div className="ai-core">
+                    <div className="core-orbit orbit-1"></div>
+                    <div className="core-orbit orbit-2"></div>
+                    <div className="core-orbit orbit-3"></div>
+
+                    <div className="core-glow"></div>
+
+                    <div className="core-center">
+                      <div className="core-symbol">S</div>
+                    </div>
+
+                    <div className="core-pulse pulse-1"></div>
+                    <div className="core-pulse pulse-2"></div>
+                  </div>
+
+                  <div className="ai-wave">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+
+                </div>
+
+                <div className="window-status">
+                  <span
+                    className={
+                      aiSpeaking
+                        ? 'pulse-dot'
+                        : ''
+                    }
+                  ></span>
+
+                  {aiSpeaking
+                    ? 'VOICE OUTPUT ACTIVE'
+                    : isThinking
+                      ? 'GENERATING RESPONSE'
+                      : 'AI READY'}
+                </div>
+              </div>
             </div>
-          )}
+
+            {(transcript || aiResponse) && (
+              <div className="conversation-text">
+                {transcript && (
+                  <div className="message">
+                    <div className="message-label">
+                      YOU
+                    </div>
+
+                    <div className="message-text">
+                      {transcript}
+                    </div>
+                  </div>
+                )}
+
+                {aiResponse && (
+                  <div className="message ai-message">
+                    <div className="message-label">
+                      SHURI
+                    </div>
+
+                    <div className="message-text">
+                      {aiResponse}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="conversation-controls">
+              <div className="mic-state">
+                <span
+                  className={
+                    isRecording || userSpeaking
+                      ? 'pulse-dot'
+                      : ''
+                  }
+                ></span>
+
+                {isTranscribing
+                  ? 'TRANSCRIBING...'
+                  : isThinking
+                    ? 'PROCESSING...'
+                    : isRecording
+                      ? 'LISTENING...'
+                      : aiSpeaking
+                        ? 'SHURI IS SPEAKING'
+                        : 'MICROPHONE READY'}
+              </div>
+
+              <div className="conversation-buttons">
+                {!isRecording &&
+                !isTranscribing &&
+                !isThinking &&
+                !aiSpeaking ? (
+                  <button
+                    className="primary-button talk-button"
+                    onClick={startRecording}
+                  >
+                    START TALKING
+                  </button>
+                ) : isRecording ? (
+                  <button
+                    className="primary-button talk-button recording-button"
+                    onClick={stopRecording}
+                  >
+                    STOP TALKING
+                  </button>
+                ) : null}
+
+                <button
+                  className="secondary-button"
+                  onClick={stopEverything}
+                >
+                  STOP SESSION
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <p className="media-error">
+                {error}
+              </p>
+            )}
+          </div>
         </main>
       </div>
     )
@@ -1498,79 +906,68 @@ I LOVE YOU = hand gesture associated with "I love you"
 
   return (
     <div className="shuri-app home-screen">
-      <header className="topbar">
-        <div className="brand">
-          <img
-            src={shuriIcon}
-            alt=""
-          />
+      <header className="topbar home-topbar">
+        <div className="home-brand">
+          <div className="home-logo">
+            <img
+              src={shuriLogo}
+              alt="S.H.U.R.I."
+            />
+          </div>
 
-          <span>S.H.U.R.I.</span>
+          <div className="home-brand-name">
+            <div className="shuri-name">S.H.U.R.I.</div>
+          </div>
         </div>
 
-        <div className="system-status">
-          <span className="status-dot"></span>
-          LOCAL
-        </div>
       </header>
 
       <main className="home">
         <section className="home-center">
-          <div className="home-core">
-            <div className="home-core-ring ring-one"></div>
-            <div className="home-core-ring ring-two"></div>
-            <div className="home-core-ring ring-three"></div>
 
-            <div className="home-core-center">
-              <span></span>
-            </div>
-          </div>
-
-          <p className="eyebrow">
-            PERSONAL INTELLIGENCE SYSTEM
-          </p>
-
-          <div className="waveform">
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
+          <h1>
+            Hey <span>Diya,</span>
+          </h1>
 
           <h2>
-            Hello, Diya.
+            How can I help you today?
           </h2>
 
-          <p className="intro">
-          </p>
-
           <button
-            className="initialize-button"
+            className="home-mic"
             onClick={() => {
               setStarted(true)
               startMedia()
             }}
+            aria-label="Start conversation"
           >
-            <span>
-              INITIALIZE SESSION
-            </span>
+            <svg viewBox="0 0 24 24">
+              <rect
+                x="9"
+                y="3"
+                width="6"
+                height="11"
+                rx="3"
+              ></rect>
 
-            <span className="arrow">
-              →
-            </span>
+              <path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6"></path>
+            </svg>
           </button>
+
+          <p className="home-mic-label">
+            TAP TO START SESSION
+          </p>
         </section>
       </main>
 
-      <footer className="footer">
-        <span>LOCAL AI</span>
-        <span>VOICE // VISION // CHAT</span>
-        <span>PRIVATE SESSION</span>
+      <footer className="home-footer">
+        <span></span>
+
+        <p>
+          Speech, Human-emotion & User Response Intelligence
+        </p>
+
+        <span></span>
       </footer>
     </div>
   )

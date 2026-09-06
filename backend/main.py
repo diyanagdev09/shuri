@@ -2,24 +2,23 @@ import os
 import re
 import subprocess
 import sys
+import time
 import tempfile
+import wave
 from pathlib import Path
 
 import requests
 import whisper
+
+from piper import PiperVoice
+from piper.config import SynthesisConfig
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-
 app = FastAPI()
-
-
-# --------------------------------------------------
-# CORS
-# --------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,35 +31,28 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-
-# --------------------------------------------------
-# CONFIGURATION
-# --------------------------------------------------
-
 OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "sam860/qwen3:1.7b"
+OLLAMA_MODEL = "shuri"
 
 PIPER_MODEL = "en_US-arctic-medium"
 PIPER_SPEAKER = 16
 PIPER_DATA_DIR = Path(__file__).resolve().parent
 
+PIPER_MODEL_PATH = PIPER_DATA_DIR / f"{PIPER_MODEL}.onnx"
+piper_voice = PiperVoice.load(str(PIPER_MODEL_PATH))
 
-# --------------------------------------------------
-# WHISPER
-# --------------------------------------------------
-
-whisper_model = whisper.load_model("base")
-
-
-# --------------------------------------------------
-# SYSTEM PROMPT
-# --------------------------------------------------
+whisper_model = whisper.load_model("tiny")
 
 SYSTEM_PROMPT = (
     "You are SHURI, a personal AI assistant. "
+    "Your name is SHURI. "
+    "Never call yourself any other name. "
+    "If the user asks your name, always say your name is SHURI. "
     "Your primary user is Diya. "
     "Speak naturally, calmly, intelligently, and warmly. "
-    "Keep responses conversational and reasonably concise. "
+    "Keep responses complete but reasonably concise. "
+    "Answer directly without unnecessary explanation. "
+    "Never use emojis or emoticons. "
     "Do not repeatedly say your name. "
     "Do not use dramatic robotic language. "
     "Give only the final answer. "
@@ -69,11 +61,6 @@ SYSTEM_PROMPT = (
     "and use it naturally in later responses."
 )
 
-
-# --------------------------------------------------
-# CONVERSATION MEMORY
-# --------------------------------------------------
-
 conversation = [
     {
         "role": "system",
@@ -81,37 +68,18 @@ conversation = [
     }
 ]
 
-
-# --------------------------------------------------
-# REQUEST MODELS
-# --------------------------------------------------
-
 class ChatRequest(BaseModel):
     message: str
-
 
 class SpeakRequest(BaseModel):
     text: str
 
-
-# --------------------------------------------------
-# HOME
-# --------------------------------------------------
-
 @app.get("/")
 def home():
-    return {
-        "message": "SHURI is online"
-    }
-
-
-# --------------------------------------------------
-# SPEECH TO TEXT - WHISPER
-# --------------------------------------------------
+    return {"message": "SHURI is online"}
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
-
     if not file.filename:
         raise HTTPException(
             status_code=400,
@@ -126,58 +94,47 @@ async def transcribe(file: UploadFile = File(...)):
             detail="Audio file is empty"
         )
 
-    suffix = (
-        os.path.splitext(file.filename)[1]
-        or ".webm"
-    )
-
+    suffix = os.path.splitext(file.filename)[1] or ".webm"
     temp_path = None
 
     try:
-        # Save uploaded audio temporarily
         with tempfile.NamedTemporaryFile(
             delete=False,
             suffix=suffix
         ) as temp_file:
-
             temp_file.write(audio_data)
             temp_path = temp_file.name
 
-        # Transcribe using Whisper
+        start_time = time.time()
+
         result = whisper_model.transcribe(
             temp_path,
-            fp16=False
+            fp16=False,
+            language="en",
+            temperature=0,
+            condition_on_previous_text=False
+        )
+
+        print(
+            f"[TIMING] Whisper: "
+            f"{time.time() - start_time:.2f}s"
         )
 
         return {
-            "text": result.get(
-                "text",
-                ""
-            ).strip()
+            "text": result.get("text", "").strip()
         }
 
     except Exception as exc:
-
         raise HTTPException(
             status_code=500,
             detail=f"Transcription failed: {exc}"
         )
 
     finally:
-
-        if (
-            temp_path
-            and os.path.exists(temp_path)
-        ):
+        if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
 
-
-# --------------------------------------------------
-# CLEAN OLLAMA THINKING TAGS
-# --------------------------------------------------
-
 def clean_thinking(text):
-
     if not text:
         return ""
 
@@ -204,14 +161,31 @@ def clean_thinking(text):
 
     return text.strip()
 
+def remove_emojis(text):
+    if not text:
+        return ""
 
-# --------------------------------------------------
-# CHAT - OLLAMA
-# --------------------------------------------------
+    pattern = re.compile(
+        "["
+        "\U0001F300-\U0001F5FF"
+        "\U0001F600-\U0001F64F"
+        "\U0001F680-\U0001F6FF"
+        "\U0001F700-\U0001F77F"
+        "\U0001F780-\U0001F7FF"
+        "\U0001F800-\U0001F8FF"
+        "\U0001F900-\U0001F9FF"
+        "\U0001FA00-\U0001FAFF"
+        "\U00002700-\U000027BF"
+        "\U00002600-\U000026FF"
+        "\U0001F1E0-\U0001F1FF"
+        "]+",
+        flags=re.UNICODE
+    )
+
+    return pattern.sub("", text).strip()
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-
     message = request.message.strip()
 
     if not message:
@@ -220,58 +194,63 @@ async def chat(request: ChatRequest):
             detail="Message cannot be empty"
         )
 
-    # Add user's message to conversation
     conversation.append({
         "role": "user",
         "content": message
     })
 
     try:
+        if len(conversation) > 7:
+            messages = [
+                conversation[0]
+            ] + conversation[-6:]
+        else:
+            messages = conversation
+
+        start_time = time.time()
 
         response = requests.post(
             OLLAMA_URL,
             json={
                 "model": OLLAMA_MODEL,
-                "messages": conversation,
-                "stream": False
+                "messages": messages,
+                "stream": False,
+                "think": False,
+                "keep_alive": "10m",
+                "options": {
+                    "temperature": 0.4
+                }
             },
-            timeout=120
+            timeout=60
         )
 
-        # --------------------------------------------------
-        # OLLAMA ERROR
-        # --------------------------------------------------
+        print(
+            f"[TIMING] Ollama: "
+            f"{time.time() - start_time:.2f}s"
+        )
 
         if not response.ok:
-
             conversation.pop()
 
             raise HTTPException(
                 status_code=response.status_code,
-                detail=(
-                    f"Ollama error: "
-                    f"{response.text}"
-                )
+                detail=f"Ollama error: {response.text}"
             )
-
-        # --------------------------------------------------
-        # READ RESPONSE
-        # --------------------------------------------------
 
         data = response.json()
 
-        answer = clean_thinking(
-            data
-            .get("message", {})
-            .get("content", "")
+        answer = data.get(
+            "message",
+            {}
+        ).get(
+            "content",
+            ""
         )
 
-        # --------------------------------------------------
-        # EMPTY RESPONSE
-        # --------------------------------------------------
+        answer = clean_thinking(answer)
+        answer = remove_emojis(answer)
 
         if not answer:
-
             conversation.pop()
 
             raise HTTPException(
@@ -279,7 +258,6 @@ async def chat(request: ChatRequest):
                 detail="Ollama returned an empty response."
             )
 
-        # Add AI response to conversation memory
         conversation.append({
             "role": "assistant",
             "content": answer
@@ -289,50 +267,26 @@ async def chat(request: ChatRequest):
             "response": answer
         }
 
-    # --------------------------------------------------
-    # OLLAMA NOT RUNNING
-    # --------------------------------------------------
-
     except requests.exceptions.ConnectionError:
-
         conversation.pop()
 
         raise HTTPException(
             status_code=503,
-            detail=(
-                "Could not connect to Ollama. "
-                "Make sure Ollama is running."
-            )
+            detail="Could not connect to Ollama. Make sure Ollama is running."
         )
 
-    # --------------------------------------------------
-    # OLLAMA TIMEOUT
-    # --------------------------------------------------
-
     except requests.exceptions.Timeout:
-
         conversation.pop()
 
         raise HTTPException(
             status_code=504,
-            detail=(
-                "Ollama took too long to respond."
-            )
+            detail="Ollama took too long to respond."
         )
-
-    # --------------------------------------------------
-    # HTTP EXCEPTION
-    # --------------------------------------------------
 
     except HTTPException:
         raise
 
-    # --------------------------------------------------
-    # OTHER ERRORS
-    # --------------------------------------------------
-
     except Exception as exc:
-
         conversation.pop()
 
         raise HTTPException(
@@ -340,45 +294,32 @@ async def chat(request: ChatRequest):
             detail=f"Chat processing failed: {exc}"
         )
 
-
-# --------------------------------------------------
-# PREPARE TEXT FOR PIPER
-# --------------------------------------------------
-
 def prepare_tts_text(text):
-
     replacements = [
-
         (
             r"\bS\.H\.U\.R\.I\.?\b",
             "[[ ʃ ˈuː ɹ iː ]]"
         ),
-
         (
             r"\bSHURI\b",
             "[[ ʃ ˈuː ɹ iː ]]"
         ),
-
         (
             r"\bShuri\b",
             "[[ ʃ ˈuː ɹ iː ]]"
         ),
-
         (
             r"\bshuri\b",
             "[[ ʃ ˈuː ɹ iː ]]"
         ),
-
         (
             r"\bDiya\b",
             "[[ d iː j ɑː ]]"
         ),
-
         (
             r"\bDIYA\b",
             "[[ d iː j ɑː ]]"
         ),
-
         (
             r"\bdiya\b",
             "[[ d iː j ɑː ]]"
@@ -386,7 +327,6 @@ def prepare_tts_text(text):
     ]
 
     for pattern, replacement in replacements:
-
         text = re.sub(
             pattern,
             replacement,
@@ -395,14 +335,8 @@ def prepare_tts_text(text):
 
     return text
 
-
-# --------------------------------------------------
-# TEXT TO SPEECH - PIPER
-# --------------------------------------------------
-
 @app.post("/speak")
 async def speak(request: SpeakRequest):
-
     text = request.text.strip()
 
     if not text:
@@ -411,92 +345,81 @@ async def speak(request: SpeakRequest):
             detail="Text cannot be empty"
         )
 
-    model_path = (
-        PIPER_DATA_DIR /
-        f"{PIPER_MODEL}.onnx"
-    )
-
-    if not model_path.exists():
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Piper model not found: "
-                f"{model_path}"
-            )
-        )
-
     output_path = None
 
     try:
-
-        # Create temporary WAV file
         with tempfile.NamedTemporaryFile(
             delete=False,
             suffix=".wav"
         ) as output_file:
-
             output_path = output_file.name
 
-        # Piper command
-        command = [
-            sys.executable,
-            "-m",
-            "piper",
+        start_time = time.time()
 
-            "--data-dir",
-            str(PIPER_DATA_DIR),
+        prepared_text = prepare_tts_text(text)
 
-            "-m",
-            PIPER_MODEL,
-
-            "-s",
-            str(PIPER_SPEAKER),
-
-            "-f",
-            output_path,
-
-            "--",
-            prepare_tts_text(text)
-        ]
-
-        process = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=120
+        # Split response into sentences
+        sentences = re.split(
+            r"(?<=[.!?])\s+",
+            prepared_text
         )
 
-        # --------------------------------------------------
-        # PIPER ERROR
-        # --------------------------------------------------
+        sentences = [
+            sentence.strip()
+            for sentence in sentences
+            if sentence.strip()
+        ]
 
-        if process.returncode != 0:
+        syn_config = SynthesisConfig(
+            speaker_id=PIPER_SPEAKER
+        )
 
-            error = (
-                process.stderr.strip()
-                or process.stdout.strip()
-                or "Piper failed."
-            )
+        with wave.open(output_path, "wb") as wav_file:
 
-            if os.path.exists(output_path):
-                os.remove(output_path)
+            wav_format_set = False
 
-            raise HTTPException(
-                status_code=500,
-                detail=error
-            )
+            for sentence_index, sentence in enumerate(sentences):
 
-        # --------------------------------------------------
-        # CHECK AUDIO FILE
-        # --------------------------------------------------
+                for audio_chunk in piper_voice.synthesize(
+                    sentence,
+                    syn_config=syn_config
+                ):
 
-        if not os.path.exists(output_path):
+                    if not wav_format_set:
+                        wav_file.setframerate(
+                            audio_chunk.sample_rate
+                        )
+                        wav_file.setsampwidth(
+                            audio_chunk.sample_width
+                        )
+                        wav_file.setnchannels(
+                            audio_chunk.sample_channels
+                        )
 
-            raise HTTPException(
-                status_code=500,
-                detail="Piper did not create audio."
-            )
+                        wav_format_set = True
+
+                    wav_file.writeframes(
+                        audio_chunk.audio_int16_bytes
+                    )
+
+                # Add 0.4 seconds of silence between sentences
+                if sentence_index < len(sentences) - 1:
+                    silence_samples = int(
+                        0.4 * piper_voice.config.sample_rate
+                    )
+
+                    silence_bytes = bytes(
+                        silence_samples * 2
+                    )
+
+                    wav_file.writeframes(
+                        silence_bytes
+                    )
+
+        print(
+            f"[TIMING] Piper: "
+            f"{time.time() - start_time:.2f}s"
+        )
 
         return FileResponse(
             output_path,
@@ -504,28 +427,9 @@ async def speak(request: SpeakRequest):
             filename="shuri_response.wav"
         )
 
-    except subprocess.TimeoutExpired:
-
-        if (
-            output_path
-            and os.path.exists(output_path)
-        ):
-            os.remove(output_path)
-
-        raise HTTPException(
-            status_code=504,
-            detail="Piper took too long."
-        )
-
-    except HTTPException:
-        raise
-
     except Exception as exc:
 
-        if (
-            output_path
-            and os.path.exists(output_path)
-        ):
+        if output_path and os.path.exists(output_path):
             os.remove(output_path)
 
         raise HTTPException(
@@ -533,14 +437,8 @@ async def speak(request: SpeakRequest):
             detail=f"TTS failed: {exc}"
         )
 
-
-# --------------------------------------------------
-# RESET CONVERSATION
-# --------------------------------------------------
-
 @app.post("/reset")
 def reset_conversation():
-
     global conversation
 
     conversation = [
