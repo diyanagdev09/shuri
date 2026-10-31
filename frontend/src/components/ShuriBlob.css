@@ -1,0 +1,55 @@
+
+.shuri-blob-container {
+  width: min(100%, 300px);
+  aspect-ratio: 1 / 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 1;
+  overflow: hidden;
+  margin: auto;
+  background: transparent;
+}
+
+.shuri-blob-canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100%;
+  object-fit: contain;
+  background: transparent;
+}
+
+/* Respond to SHURI's existing conversation states */
+
+.ai-listening .shuri-blob-container {
+  filter: drop-shadow(0 0 20px rgba(75, 199, 255, 0.45));
+}
+
+.ai-thinking .shuri-blob-container {
+  filter: drop-shadow(0 0 20px rgba(142, 105, 255, 0.4));
+}
+
+.ai-speaking .shuri-blob-container {
+  filter: drop-shadow(0 0 28px rgba(177, 111, 255, 0.55));
+  transform: scale(1.04);
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+@media (max-width: 760px) {
+  .shuri-blob-container {
+    width: min(100%, 220px);
+  }
+}
+.ai-core {
+  width: min(72vw, 300px) !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1;
+  max-width: 100%;
+  flex-shrink: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}

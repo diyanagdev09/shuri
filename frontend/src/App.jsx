@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import ShuriBlob from "./components/ShuriBlob";
 import { FaceLandmarker, GestureRecognizer, FilesetResolver } from '@mediapipe/tasks-vision'
 import './App.css'
 import shuriIcon from './assets/shuri_icon_only.png'
@@ -749,7 +750,11 @@ setExpressionCue('NEUTRAL')
                 className={`video-window ai-window ${
                   aiSpeaking
                     ? 'ai-speaking'
-                    : ''
+                    : isThinking || isTranscribing
+                      ? 'ai-thinking'
+                      : isRecording || userSpeaking
+                        ? 'ai-listening'
+                        : 'ai-idle'
                 }`}
               >
                 <div className="window-header">
@@ -766,20 +771,11 @@ setExpressionCue('NEUTRAL')
                 </div>
 
                 <div className="ai-stage">
-                  <div className="ai-core">
-                    <div className="core-orbit orbit-1"></div>
-                    <div className="core-orbit orbit-2"></div>
-                    <div className="core-orbit orbit-3"></div>
+                  
+              <div className="ai-core">
+                <ShuriBlob />
+              </div>
 
-                    <div className="core-glow"></div>
-
-                    <div className="core-center">
-                      <div className="core-symbol">S</div>
-                    </div>
-
-                    <div className="core-pulse pulse-1"></div>
-                    <div className="core-pulse pulse-2"></div>
-                  </div>
 
                   <div className="ai-wave">
                     <span></span>

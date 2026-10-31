@@ -940,3 +940,229 @@ button {
     min-width: 130px;
   }
 }
+
+/* SHURI responsive AI orb: animated according to the real conversation state */
+.ai-stage::before,
+.ai-stage::after,
+.ai-core .core-orbit,
+.ai-core .core-pulse {
+  display: none !important;
+}
+
+.ai-stage {
+  background:
+    radial-gradient(ellipse at 50% 48%, rgba(109, 56, 177, .18), transparent 35%),
+    radial-gradient(ellipse at 50% 50%, rgba(35, 12, 57, .18), transparent 62%),
+    #030107;
+}
+
+.ai-core {
+  width: 230px !important;
+  height: 230px !important;
+  isolation: isolate;
+  filter: drop-shadow(0 0 28px rgba(155, 82, 255, .18));
+  transition: transform .35s ease, filter .35s ease;
+}
+
+.ai-core::before,
+.ai-core::after {
+  content: '';
+  position: absolute;
+  inset: 24px;
+  border-radius: 43% 57% 62% 38% / 42% 43% 57% 58%;
+  background: conic-gradient(from 20deg, #32105e, #a85bff, #68d9ff, #5530c8, #d9a0ff, #32105e);
+  filter: blur(1px);
+  opacity: .9;
+  z-index: 1;
+  animation: shuriBlobMorph 7s ease-in-out infinite, shuriBlobSpin 13s linear infinite;
+}
+
+.ai-core::after {
+  inset: 39px;
+  background: conic-gradient(from 180deg, #120721, #8c42f5, #b7f1ff, #5423b8, #efb6ff, #120721);
+  filter: blur(12px);
+  opacity: .75;
+  animation: shuriBlobMorph 5.2s ease-in-out infinite reverse, shuriBlobSpin 10s linear infinite reverse;
+  z-index: 2;
+}
+
+.core-glow {
+  width: 160px !important;
+  height: 160px !important;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(222, 177, 255, .88) 0%, rgba(142, 81, 255, .55) 25%, rgba(53, 21, 103, .2) 55%, transparent 72%);
+  filter: blur(18px) !important;
+  z-index: 3;
+  animation: shuriGlow 3.4s ease-in-out infinite;
+}
+
+.core-center {
+  width: 126px !important;
+  height: 126px !important;
+  border: 1px solid rgba(231, 208, 255, .7) !important;
+  border-radius: 42% 58% 55% 45% / 45% 42% 58% 55%;
+  background: radial-gradient(circle at 32% 27%, rgba(255,255,255,.96), rgba(201,151,255,.94) 10%, rgba(115,61,222,.94) 34%, rgba(33,11,66,.98) 69%, #07020d 100%) !important;
+  box-shadow: inset -13px -17px 30px rgba(4,0,17,.7), inset 8px 8px 20px rgba(255,255,255,.22), 0 0 30px rgba(166,91,255,.65), 0 0 80px rgba(115,61,222,.3) !important;
+  z-index: 4;
+  animation: shuriBlobMorph 5.8s ease-in-out infinite, shuriFloat 4s ease-in-out infinite;
+}
+
+.core-symbol { opacity: 0; }
+.ai-wave { opacity: .2; transition: opacity .25s ease; }
+.ai-wave span { background: linear-gradient(to top, #6730b4, #e7c6ff, #78e5ff); }
+
+.ai-listening .ai-core { transform: scale(1.07); filter: drop-shadow(0 0 42px rgba(93, 206, 255, .3)); }
+.ai-listening .ai-core::before { animation-duration: 2.3s, 8s; background: conic-gradient(from 20deg, #241064, #5dceff, #c2a0ff, #4b31e0, #78efff, #241064); }
+.ai-listening .core-center { animation-duration: 2.1s, 2s; box-shadow: inset -13px -17px 30px rgba(4,0,17,.65), inset 8px 8px 20px rgba(255,255,255,.28), 0 0 42px rgba(93,206,255,.75) !important; }
+.ai-listening .ai-wave { opacity: .85; }
+.ai-listening .ai-wave span { animation: aiWave .48s ease-in-out infinite alternate; }
+.ai-listening .ai-wave span:nth-child(2n) { animation-delay: .13s; }
+
+.ai-thinking .ai-core { transform: scale(.96); }
+.ai-thinking .ai-core::before { animation-duration: 1.5s, 3s; }
+.ai-thinking .ai-core::after { animation-duration: 2s, 4s; }
+.ai-thinking .core-center { animation-duration: 2.1s, 2.3s; }
+.ai-thinking .ai-wave { opacity: .65; }
+.ai-thinking .ai-wave span { animation: aiWave .7s ease-in-out infinite alternate; }
+
+.ai-speaking .ai-core { transform: scale(1.12); filter: drop-shadow(0 0 52px rgba(187, 111, 255, .42)); }
+.ai-speaking .ai-core::before { animation-duration: 1.7s, 5s; }
+.ai-speaking .ai-core::after { animation-duration: 1.25s, 4s; }
+.ai-speaking .core-center { animation-duration: 1.5s, 1.6s; }
+.ai-speaking .ai-wave { opacity: 1; }
+.ai-speaking .ai-wave span { animation: aiWave .34s ease-in-out infinite alternate; }
+.ai-speaking .ai-wave span:nth-child(3n) { animation-delay: .1s; }
+
+@keyframes shuriBlobMorph {
+  0%, 100% { border-radius: 43% 57% 62% 38% / 42% 43% 57% 58%; transform: rotate(0deg) scale(1); }
+  25% { border-radius: 56% 44% 39% 61% / 51% 60% 40% 49%; transform: rotate(8deg) scale(1.035); }
+  50% { border-radius: 37% 63% 51% 49% / 60% 39% 61% 40%; transform: rotate(-5deg) scale(.97); }
+  75% { border-radius: 60% 40% 58% 42% / 39% 55% 45% 61%; transform: rotate(5deg) scale(1.02); }
+}
+@keyframes shuriBlobSpin { to { rotate: 360deg; } }
+@keyframes shuriGlow { 0%, 100% { opacity: .55; scale: .9; } 50% { opacity: 1; scale: 1.1; } }
+@keyframes shuriFloat { 0%, 100% { translate: 0 0; } 50% { translate: 0 -5px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-core::before, .ai-core::after, .core-center, .core-glow, .ai-wave span { animation-duration: 4s !important; }
+}
+
+
+/* SHURI liquid glass blob */
+.shuri-blob {
+  position: relative;
+  width: 400px;
+  height: 400px;
+  isolation: isolate;
+  overflow: visible;
+  border-radius: 50%;
+
+  background:
+    radial-gradient(ellipse at 34% 31%,
+      rgba(211, 246, 255, .92) 0%,
+      rgba(115, 219, 255, .72) 8%,
+      transparent 26%),
+    radial-gradient(ellipse at 72% 32%,
+      rgba(105, 48, 255, .9) 0%,
+      transparent 37%),
+    radial-gradient(ellipse at 29% 70%,
+      rgba(117, 47, 255, .92) 0%,
+      transparent 43%),
+    radial-gradient(ellipse at 68% 75%,
+      rgba(221, 130, 255, .85) 0%,
+      transparent 35%),
+    radial-gradient(ellipse at 55% 53%,
+      rgba(66, 102, 255, .55),
+      transparent 65%);
+
+  filter: drop-shadow(0 0 22px rgba(67, 190, 255, .45));
+  animation: shuriMorph 7s ease-in-out infinite alternate;
+}
+
+/* Outer translucent membrane */
+.shuri-blob::before {
+  content: "";
+  position: absolute;
+  inset: -4%;
+  border-radius: 48% 52% 44% 56% / 47% 43% 57% 53%;
+
+  background:
+    radial-gradient(ellipse at 25% 25%,
+      rgba(86, 231, 255, .35),
+      transparent 40%),
+    radial-gradient(ellipse at 75% 70%,
+      rgba(174, 83, 255, .30),
+      transparent 45%);
+
+  border: 1px solid rgba(116, 215, 255, .42);
+
+  box-shadow:
+    inset 0 0 24px rgba(89, 214, 255, .30),
+    inset 0 0 55px rgba(135, 91, 255, .22),
+    0 0 25px rgba(72, 184, 255, .35);
+
+  backdrop-filter: blur(2px);
+  animation: shuriMembrane 5s ease-in-out infinite alternate;
+}
+
+/* Flowing transparent inner surface */
+.shuri-blob::after {
+  content: "";
+  position: absolute;
+  inset: 3%;
+  border-radius: 55% 45% 53% 47% / 43% 55% 45% 57%;
+
+  background:
+    conic-gradient(
+      from 20deg at 52% 50%,
+      transparent 0deg,
+      rgba(104, 48, 255, .18) 55deg,
+      rgba(206, 142, 255, .52) 115deg,
+      rgba(87, 211, 255, .52) 190deg,
+      rgba(130, 103, 255, .28) 260deg,
+      transparent 340deg
+    );
+
+  border: 1px solid rgba(175, 217, 255, .25);
+  filter: blur(3px);
+  mix-blend-mode: screen;
+  animation: shuriFlow 9s linear infinite;
+}
+
+@keyframes shuriMorph {
+  0% {
+    border-radius: 48% 52% 44% 56% / 47% 43% 57% 53%;
+    transform: rotate(-8deg) scale(.98);
+  }
+  50% {
+    border-radius: 56% 44% 53% 47% / 42% 57% 43% 58%;
+    transform: rotate(4deg) scale(1.03);
+  }
+  100% {
+    border-radius: 43% 57% 48% 52% / 55% 44% 56% 45%;
+    transform: rotate(8deg) scale(1);
+  }
+}
+
+@keyframes shuriMembrane {
+  from {
+    transform: rotate(-12deg) scale(.98);
+    border-radius: 48% 52% 44% 56% / 47% 43% 57% 53%;
+  }
+  to {
+    transform: rotate(12deg) scale(1.04);
+    border-radius: 57% 43% 55% 45% / 44% 56% 44% 56%;
+  }
+}
+
+@keyframes shuriFlow {
+  from { transform: rotate(0deg) scale(.97); }
+  to { transform: rotate(360deg) scale(1.03); }
+}
+
+@media (max-width: 600px) {
+  .shuri-blob {
+    width: 270px;
+    height: 270px;
+  }
+}
